@@ -55,10 +55,23 @@ app = FastAPI(
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # À modifier en production
+    allow_origins=["*"],  # À modifier en production pour une meilleure sécurité
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=[
+        "*",  # Autoriser tous les en-têtes
+        "Authorization",  # Spécifiquement autoriser l'en-tête d'autorisation
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+    ],
+    expose_headers=[
+        "Content-Disposition",
+        "Content-Length",
+        "Content-Type",
+    ],
+    max_age=600,  # Durée de mise en cache des pré-vérifications CORS en secondes
 )
 
 # Static files

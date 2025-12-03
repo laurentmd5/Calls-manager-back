@@ -2,8 +2,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from ..database.connection import get_db
-from ..schemas.user import UserLogin, Token
-from ..services.auth import authenticate_user
+from ..schemas.user import UserLogin, Token, UserResponse
+from ..services.auth import authenticate_user, get_current_user
+from ..models.user import User
 from ..utils.security import create_access_token
 from datetime import timedelta
 from config import settings
@@ -37,3 +38,12 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "user": user
     }
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_profile(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Récupère les informations de l'utilisateur connecté.
+    """
+    return current_user

@@ -24,9 +24,52 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-def verify_token(token: str) -> Optional[dict]:
+def verify_token(token: str = None) -> Optional[dict]:
+    """
+    Vérifie et décode un token JWT.
+    
+    Args:
+        token: Le token JWT à vérifier (peut inclure le préfixe 'Bearer ')
+        
+    Returns:
+        dict: Le payload décodé si le token est valide, None sinon
+    """
+    if not token:
+        print("Aucun token fourni")
+        return None
+        
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        # Nettoyer le token au cas où il contiendrait le préfixe 'Bearer '
+        if isinstance(token, str) and token.startswith('Bearer '):
+            token = token[7:].strip()
+            
+        if not token:
+            print("Token vide après nettoyage")
+            return None
+            
+        print(f"Tentative de décodage du token: {token[:20]}...")
+        print(f"Algorithme: {settings.ALGORITHM}")
+        
+        # Décoder le token
+        payload = jwt.decode(
+            token, 
+            settings.SECRET_KEY, 
+            algorithms=[settings.ALGORITHM],
+            options={
+                "verify_exp": True,  # Vérifier l'expiration
+                "require": ["exp", "sub", "user_id", "role"]  # Champs obligatoires
+            }
+        )
+        
+        print(f"Token décodé avec succès pour l'utilisateur: {payload.get('sub')}")
         return payload
-    except JWTError:
+        
+    except jwt.ExpiredSignatureError:
+        print("Erreur: Le token a expiré")
+        return None
+    except jwt.JWTClaimsError as e:
+        print(f"Erreur de revendications du token: {str(e)}")
+        return None
+    except Exception as e:
+        print(f"Erreur inattendue lors du décodage du token: {str(e)}")
         return None
