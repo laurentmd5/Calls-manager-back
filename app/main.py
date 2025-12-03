@@ -52,16 +52,20 @@ app = FastAPI(
     description="Backend pour l'application de gestion d'appels commerciaux"
 )
 
-# CORS Middleware
+# CORS Middleware Configuration
+origins = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # À modifier en production pour une meilleure sécurité
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=[
-        "*",  # Autoriser tous les en-têtes
-        "Authorization",  # Spécifiquement autoriser l'en-tête d'autorisation
         "Content-Type",
+        "Authorization",
         "Accept",
         "Origin",
         "X-Requested-With",
@@ -71,7 +75,7 @@ app.add_middleware(
         "Content-Length",
         "Content-Type",
     ],
-    max_age=600,  # Durée de mise en cache des pré-vérifications CORS en secondes
+    max_age=600,
 )
 
 # Static files
