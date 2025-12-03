@@ -13,11 +13,11 @@ from ..models.user import UserRole
 
 router = APIRouter()
 
-def get_current_admin(token: str = Depends(verify_token)):
-    if not token or token.get("role") != UserRole.ADMIN:
+def get_admin_or_manager(token: str = Depends(verify_token)):
+    if not token or token.get("role") not in ["admin", "manager"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Accès réservé aux administrateurs"
+            detail="Accès réservé aux administrateurs et managers"
         )
     return token
 
@@ -25,7 +25,7 @@ def get_current_admin(token: str = Depends(verify_token)):
 def create_new_user(
     user_data: UserCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_admin)
+    current_user: dict = Depends(get_admin_or_manager)
 ):
     return create_user(db, user_data)
 
@@ -34,14 +34,14 @@ def list_users(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_admin)
+    current_user: dict = Depends(get_admin_or_manager)
 ):
     return get_users(db, skip, limit)
 
 @router.get("/users/commercials", response_model=List[UserResponse])
 def list_commercials(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_admin)
+    current_user: dict = Depends(get_admin_or_manager)
 ):
     return get_commercials(db)
 
@@ -49,7 +49,7 @@ def list_commercials(
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_admin)
+    current_user: dict = Depends(get_admin_or_manager)
 ):
     user = get_user_by_id(db, user_id)
     if not user:
@@ -61,7 +61,7 @@ def update_user_info(
     user_id: int,
     user_data: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_admin)
+    current_user: dict = Depends(get_admin_or_manager)
 ):
     user = update_user(db, user_id, user_data)
     if not user:
@@ -72,7 +72,7 @@ def update_user_info(
 def delete_user_account(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_admin)
+    current_user: dict = Depends(get_admin_or_manager)
 ):
     success = delete_user(db, user_id)
     if not success:
