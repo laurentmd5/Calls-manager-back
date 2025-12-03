@@ -56,20 +56,19 @@ app = FastAPI(
 origins = [
     "http://localhost:8080",
     "http://127.0.0.1:8080",
+    "http://192.168.1.35:8000",
+    "http://localhost",
+    "http://localhost:8000",
+    "http://192.168.1.*",
+    "http://10.0.2.2:8000"  # Pour émulateur Android
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=[
-        "Content-Type",
-        "Authorization",
-        "Accept",
-        "Origin",
-        "X-Requested-With",
-    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
     expose_headers=[
         "Content-Disposition",
         "Content-Length",
