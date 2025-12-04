@@ -6,7 +6,7 @@ from ..database.connection import get_db
 from ..schemas.user import UserCreate, UserResponse, UserUpdate
 from ..services.user_service import (
     create_user, get_users, get_user_by_id, 
-    update_user, delete_user, get_commercials
+    update_user, delete_user, get_commercials, get_inactive_users
 )
 from ..utils.security import verify_token
 from ..models.user import UserRole
@@ -44,6 +44,17 @@ def list_commercials(
     current_user: dict = Depends(get_admin_or_manager)
 ):
     return get_commercials(db)
+
+@router.get("/users/inactive", response_model=List[UserResponse])
+def list_inactive_users(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_admin_or_manager)
+):
+    """
+    Récupère la liste des utilisateurs inactifs.
+    Seuls les administrateurs et les managers peuvent accéder à cette fonctionnalité.
+    """
+    return get_inactive_users(db)
 
 @router.get("/users/{user_id}", response_model=UserResponse)
 def get_user(

@@ -35,14 +35,24 @@ def get_commercials(db: Session) -> List[User]:
         User.is_active == True
     ).all()
 
-def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
-    return db.query(User).filter(User.id == user_id, User.is_active == True).first()
+def get_inactive_users(db: Session) -> List[User]:
+    return db.query(User).filter(User.is_active == False).all()
 
-def get_user_by_email(db: Session, email: str) -> Optional[User]:
-    return db.query(User).filter(User.email == email, User.is_active == True).first()
+def get_user_by_id(db: Session, user_id: int, include_inactive: bool = False) -> Optional[User]:
+    query = db.query(User).filter(User.id == user_id)
+    if not include_inactive:
+        query = query.filter(User.is_active == True)
+    return query.first()
+
+def get_user_by_email(db: Session, email: str, include_inactive: bool = False) -> Optional[User]:
+    query = db.query(User).filter(User.email == email)
+    if not include_inactive:
+        query = query.filter(User.is_active == True)
+    return query.first()
 
 def update_user(db: Session, user_id: int, user_data: UserUpdate) -> Optional[User]:
-    user = get_user_by_id(db, user_id)
+    # On utilise include_inactive=True pour pouvoir réactiver un utilisateur inactif
+    user = get_user_by_id(db, user_id, include_inactive=True)
     if not user:
         return None
     
