@@ -25,18 +25,12 @@ def get_current_user(token: str = Depends(verify_token)):
 async def upload_recording(
     call_id: int,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     # Vérifier que l'appel existe
     call = get_call_by_id(db, call_id)
     if not call:
         raise HTTPException(status_code=404, detail="Appel non trouvé")
-    
-    # Vérifier les permissions
-    if (current_user["role"] == UserRole.COMMERCIAL and 
-        call.commercial_id != current_user["user_id"]):
-        raise HTTPException(status_code=403, detail="Accès non autorisé")
     
     # Vérifier le format du fichier
     if not file.content_type.startswith('audio/'):
