@@ -11,6 +11,7 @@ from ..services.call_service import (
     get_calls_stats, get_calls_by_period
 )
 from ..utils.security import verify_token
+from ..models.user import UserRole
 
 router = APIRouter()
 
