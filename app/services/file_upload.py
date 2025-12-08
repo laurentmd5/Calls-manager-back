@@ -42,6 +42,10 @@ async def save_recording_file(db: Session, call_id: int, file) -> Recording:
 def get_recording_by_id(db: Session, recording_id: int) -> Recording:
     return db.query(Recording).filter(Recording.id == recording_id).first()
 
+def get_recording_by_call_id(db: Session, call_id: int) -> Recording:
+    """Récupère un enregistrement par son ID d'appel"""
+    return db.query(Recording).filter(Recording.call_id == call_id).first()
+
 def delete_recording_file(db: Session, recording_id: int) -> bool:
     recording = get_recording_by_id(db, recording_id)
     if not recording:
