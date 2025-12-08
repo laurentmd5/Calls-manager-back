@@ -20,7 +20,7 @@ def get_calls(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
 ) -> List[Call]:
-    query = db.query(Call)
+    query = db.query(Call).join(Call.commercial)
     
     if start_date:
         start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
@@ -40,7 +40,7 @@ def get_commercial_calls(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
 ) -> List[Call]:
-    query = db.query(Call).filter(Call.commercial_id == commercial_id)
+    query = db.query(Call).join(Call.commercial).filter(Call.commercial_id == commercial_id)
     
     if start_date:
         start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
@@ -53,7 +53,7 @@ def get_commercial_calls(
     return query.order_by(Call.call_date.desc()).offset(skip).limit(limit).all()
 
 def get_call_by_id(db: Session, call_id: int) -> Optional[Call]:
-    return db.query(Call).filter(Call.id == call_id).first()
+    return db.query(Call).join(Call.commercial).filter(Call.id == call_id).first()
 
 def update_call(db: Session, call_id: int, call_data: CallUpdate) -> Optional[Call]:
     call = get_call_by_id(db, call_id)
@@ -75,7 +75,7 @@ def get_calls_by_period(
     commercial_id: Optional[int] = None
 ) -> List[Call]:
     """Récupère les appels dans une période donnée pour un commercial spécifique ou tous les commerciaux."""
-    query = db.query(Call).filter(
+    query = db.query(Call).join(Call.commercial).filter(
         Call.call_date >= start_date,
         Call.call_date <= end_date
     )
@@ -99,7 +99,7 @@ def get_calls_stats(db: Session, user_id: Optional[int] = None, period: str = "t
         start_date = now - timedelta(days=30)
     
     # Construire la requête
-    query = db.query(Call).filter(Call.call_date >= start_date)
+    query = db.query(Call).join(Call.commercial).filter(Call.call_date >= start_date)
     
     if user_id:
         query = query.filter(Call.commercial_id == user_id)

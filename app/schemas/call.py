@@ -19,9 +19,19 @@ class CallUpdate(BaseModel):
     decision: Optional[CallDecision] = None
     notes: Optional[str] = None
 
+class CommercialBase(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+    email: str
+
+    class Config:
+        from_attributes = True
+
 class CallResponse(CallBase):
     id: int
     commercial_id: int
+    commercial: CommercialBase
     call_date: datetime
 
     class Config:
