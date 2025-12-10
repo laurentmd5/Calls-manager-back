@@ -8,7 +8,7 @@ from .database.connection import SessionLocal, create_tables
 from .models.user import User, UserRole
 from passlib.context import CryptContext
 from datetime import datetime
-from .routes import auth, users, clients, calls, recordings
+from .routes import auth, users, clients, calls, recordings, performance
 from config import settings
 
 def create_default_admin():
@@ -87,6 +87,7 @@ app.include_router(users.router, prefix="/api/v1", tags=["Users"])
 app.include_router(clients.router, prefix="/api/v1", tags=["Clients"])
 app.include_router(calls.router, prefix="/api/v1", tags=["Calls"])
 app.include_router(recordings.router, prefix="/api/v1", tags=["Recordings"])
+app.include_router(performance.router, tags=["Performance"])
 
 @app.on_event("startup")
 async def startup_event():

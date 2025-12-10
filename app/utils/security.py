@@ -73,3 +73,66 @@ def verify_token(token: str = None) -> Optional[dict]:
     except Exception as e:
         print(f"Erreur inattendue lors du décodage du token: {str(e)}")
         return None
+
+def has_permission(user, required_permissions):
+    """
+    Vérifie si un utilisateur a les permissions requises.
+    
+    Args:
+        user: L'utilisateur (doit avoir un attribut 'role')
+        required_permissions: Liste des permissions requises (ex: ['read:performance'])
+        
+    Returns:
+        bool: True si l'utilisateur a toutes les permissions requises, False sinon
+    """
+    if not user or not hasattr(user, 'role'):
+        return False
+        
+    # Les permissions par rôle
+    role_permissions = {
+        'admin': [
+            'read:performance',
+            'write:performance',
+            'read:users',
+            'write:users',
+            'read:clients',
+            'write:clients',
+            'read:calls',
+            'write:calls',
+            'read:recordings',
+            'write:recordings'
+        ],
+        'manager': [
+            'read:performance',
+            'read:users',
+            'read:clients',
+            'write:clients',
+            'read:calls',
+            'write:calls',
+            'read:recordings'
+        ],
+        'commercial': [
+            'read:performance:own',
+            'read:clients:own',
+            'read:calls:own',
+            'read:recordings:own'
+        ]
+    }
+    
+    # Vérifier si l'utilisateur a un rôle valide
+    if user.role not in role_permissions:
+        return False
+        
+    # Vérifier si l'utilisateur a toutes les permissions requises
+    user_permissions = role_permissions.get(user.role, [])
+    
+    # Pour les commerciaux, vérifier les permissions spécifiques
+    if user.role == 'commercial':
+        # Si l'utilisateur demande une permission spécifique, vérifier s'il a accès
+        for perm in required_permissions:
+            if perm not in user_permissions and not perm.startswith('read:performance:own'):
+                return False
+        return True
+    
+    # Pour les autres rôles, vérifier les permissions normales
+    return all(perm in user_permissions for perm in required_permissions)
