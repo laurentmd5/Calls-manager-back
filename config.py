@@ -6,7 +6,7 @@ load_dotenv()
 
 class Settings:
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "mysql+mysqlconnector://user:password@localhost/commercial_calls")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "mysql+mysqlconnector://netsysuser:laurent@localhost/commercial_calls")
     
     # JWT
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here")

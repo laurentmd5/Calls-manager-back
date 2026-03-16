@@ -25,7 +25,7 @@ def create_default_admin():
         if not admin:
             admin = User(
                 email="admin@netsysvoice.com",
-                password_hash=pwd_context.hash("passer"),
+                password_hash=pwd_context.hash("passer"[:72]),
                 first_name="netsysvoice",
                 last_name="admin",
                 phone_number="",
@@ -58,6 +58,7 @@ origins = [
     "http://127.0.0.1:8080",
     "http://192.168.1.35:8000",
     "http://localhost",
+    "https://bolt-procedure-cms-textile.trycloudflare.com:8000",
     "http://localhost:8000",
     "http://192.168.1.*",
     "http://10.0.2.2:8000"  # Pour émulateur Android
