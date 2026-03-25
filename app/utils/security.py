@@ -4,6 +4,10 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
 from config import settings
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -35,7 +39,7 @@ def verify_token(token: str = None) -> Optional[dict]:
         dict: Le payload décodé si le token est valide, None sinon
     """
     if not token:
-        print("Aucun token fourni")
+        logger.debug("Aucun token fourni")
         return None
         
     try:
@@ -44,11 +48,8 @@ def verify_token(token: str = None) -> Optional[dict]:
             token = token[7:].strip()
             
         if not token:
-            print("Token vide après nettoyage")
+            logger.debug("Token vide après nettoyage")
             return None
-            
-        print(f"Tentative de décodage du token: {token[:20]}...")
-        print(f"Algorithme: {settings.ALGORITHM}")
         
         # Décoder le token
         payload = jwt.decode(
@@ -61,18 +62,79 @@ def verify_token(token: str = None) -> Optional[dict]:
             }
         )
         
-        print(f"Token décodé avec succès pour l'utilisateur: {payload.get('sub')}")
+        logger.debug(f"Token décodé avec succès pour l'utilisateur: {payload.get('sub')}")
         return payload
         
     except jwt.ExpiredSignatureError:
-        print("Erreur: Le token a expiré")
+        logger.warning("Le token a expiré")
         return None
     except jwt.JWTClaimsError as e:
-        print(f"Erreur de revendications du token: {str(e)}")
+        logger.warning(f"Erreur de revendications du token: {str(e)}")
         return None
     except Exception as e:
-        print(f"Erreur inattendue lors du décodage du token: {str(e)}")
+        logger.error(f"Erreur inattendue lors du décodage du token: {str(e)}", exc_info=True)
         return None
+
+
+def validate_file_path(file_path: str) -> bool:
+    """
+    Vérifie qu'un chemin de fichier est sécurisé.
+    Prévient les attaques par traversal de répertoire (path traversal).
+    
+    Sécurité:
+    - Le chemin doit être dans le répertoire recordings/
+    - Pas de traversal de répertoire (..)
+    - Chemin absolu doit commencer par recordings_dir
+    
+    Args:
+        file_path: Chemin du fichier à valider
+        
+    Returns:
+        bool: True si le chemin est sûr
+        
+    Raises:
+        ValueError: Si le chemin est en dehors de recordings/ ou n'existe pas
+    """
+    
+    # Résoudre les chemins en absolu (élimine .., symlinks, etc)
+    abs_path = os.path.abspath(file_path)
+    recordings_dir = os.path.abspath(settings.RECORDINGS_DIR)
+    
+    # Vérifier que le chemin est bien dans recordings/
+    # Important: vérifier que abs_path commence par recordings_dir + le séparateur
+    if not abs_path.startswith(recordings_dir + os.sep) and abs_path != recordings_dir:
+        logger.error(f"Tentative accès en dehors recordings: {abs_path}")
+        raise ValueError(f"Accès refusé: chemin en dehors de {recordings_dir}")
+    
+    # Vérifier l'existence
+    if not os.path.exists(abs_path):
+        logger.warning(f"Fichier non trouvé: {abs_path}")
+        raise ValueError(f"Fichier non trouvé: {abs_path}")
+    
+    return True
+
+
+def safe_file_path(file_path: str) -> str:
+    """
+    Retourne le chemin sécurisé d'un fichier ou lève une exception.
+    À utiliser avant chaque accès de fichier pour éviter les traversals.
+    
+    Args:
+        file_path: Chemin à valider
+        
+    Returns:
+        str: Chemin absolu sécurisé
+        
+    Raises:
+        ValueError: Si le chemin est invalide ou en dehors de recordings/
+        
+    Examples:
+        >>> safe_path = safe_file_path("recordings/550e8400.m4a")
+        >>> with open(safe_path, "rb") as f:
+        ...     content = f.read()
+    """
+    validate_file_path(file_path)
+    return os.path.abspath(file_path)
 
 def has_permission(user, required_permissions):
     """

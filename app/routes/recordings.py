@@ -3,17 +3,24 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.orm import Session
 from typing import List
 import os
+import logging
+
 from ..database.connection import get_db
 from ..schemas.recording import RecordingResponse, RecordingCreate
 from ..services.call_service import get_call_by_id
 from ..services.file_upload import save_recording_file, get_recording_by_call_id, get_recording_by_id
-from ..utils.security import verify_token
+from ..utils.security import verify_token, safe_file_path
+from ..utils.file_validator import validate_audio_file, get_audio_mime_type
+from ..utils.exceptions import ResourceNotFound, UnauthorizedAccess, InvalidFileFormat, UploadError
 from ..models.user import UserRole
 from config import settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
 
 def get_current_user(token: str = Depends(verify_token)):
+    """Extrait l'utilisateur courant du token JWT."""
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -21,155 +28,295 @@ def get_current_user(token: str = Depends(verify_token)):
         )
     return token
 
-@router.post("/recordings", response_model=RecordingResponse)
+
+def check_recording_access(db: Session, recording, current_user: dict) -> bool:
+    """
+    Vérifie si l'utilisateur a accès à cet enregistrement.
+    
+    Règles:
+    - COMMERCIAL: accès à ses appels uniquement
+    - MANAGER: accès à tous (comme admin)
+    - ADMIN: accès à tous
+    
+    Args:
+        db: Session base de données
+        recording: Objet Recording
+        current_user: Dict utilisateur du token
+        
+    Returns:
+        bool: True si accès autorisé
+    """
+    if current_user["role"] in [UserRole.ADMIN, UserRole.MANAGER]:
+        return True
+    
+    if current_user["role"] == UserRole.COMMERCIAL:
+        return recording.call.commercial_id == current_user["user_id"]
+    
+    return False
+
+
+@router.post(
+    "/recordings",
+    response_model=RecordingResponse,
+    summary="Upload un enregistrement d'appel",
+    tags=["Recordings"]
+)
 async def upload_recording(
     call_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+    """
+    Upload un fichier audio (m4a, mp3, wav...) pour un appel donné.
+    
+    **Formats acceptés:**
+    - audio/mp4 (.m4a, .mp4) - Samsung A06
+    - audio/mpeg (.mp3)
+    - audio/wav (.wav)
+    - audio/ogg (.ogg)
+    - application/octet-stream (fallback)
+    
+    **Processus:**
+    1. Validation du format (MIME type + extension)
+    2. Génération UUID unique pour le nom de stockage
+    3. Sauvegarde dans `/recordings/[UUID].m4a`
+    4. Création de l'enregistrement en base de données
+    """
+    logger.info(f"Upload fichier pour appel {call_id}: {file.filename} (MIME: {file.content_type})")
+    
     # Vérifier que l'appel existe
     call = get_call_by_id(db, call_id)
     if not call:
-        raise HTTPException(status_code=404, detail="Appel non trouvé")
+        logger.warning(f"Appel {call_id} non trouvé - upload rejeté")
+        raise ResourceNotFound(f"Appel {call_id} non trouvé")
     
-    # Vérifier le format du fichier
-    if not file.content_type.startswith('audio/'):
-        raise HTTPException(status_code=400, detail="Format de fichier audio non supporté")
+    # Vérifier le format du fichier (avec validation améliorée)
+    is_valid, error_msg = validate_audio_file(file)
+    if not is_valid:
+        logger.warning(f"Fichier rejeté: {error_msg}")
+        raise InvalidFileFormat(error_msg)
     
     try:
+        logger.debug(f"Sauvegarde du fichier {file.filename} pour appel {call_id}")
         recording = await save_recording_file(db, call_id, file)
+        logger.info(f"✅ Enregistrement créé: ID={recording.id}, chemin={recording.file_path}")
         return recording
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de l'upload: {str(e)}")
+        logger.error(f"❌ Erreur lors de l'upload: {str(e)}", exc_info=True)
+        raise UploadError(f"Erreur lors de l'upload: {str(e)}")
 
-@router.get("/recordings/{recording_id}")
+
+@router.get(
+    "/recordings/{recording_id}",
+    response_model=RecordingResponse,
+    summary="Récupérer les infos d'un enregistrement",
+    tags=["Recordings"]
+)
 def get_recording_info(
     recording_id: int,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    """Récupère les infos d'un enregistrement spécifique."""
     recording = get_recording_by_id(db, recording_id)
     if not recording:
-        raise HTTPException(status_code=404, detail="Enregistrement non trouvé")
+        logger.warning(f"Enregistrement {recording_id} non trouvé")
+        raise ResourceNotFound(f"Enregistrement {recording_id} non trouvé")
     
     # Vérifier les permissions
-    call = recording.call
-    if (current_user["role"] == UserRole.COMMERCIAL and 
-        call.commercial_id != current_user["user_id"]):
-        raise HTTPException(status_code=403, detail="Accès non autorisé")
+    if not check_recording_access(db, recording, current_user):
+        logger.warning(
+            f"Accès refusé: {current_user['role']} {current_user['user_id']} "
+            f"tente d'accéder enregistrement {recording_id}"
+        )
+        raise UnauthorizedAccess("Vous n'avez pas accès à cet enregistrement")
     
     return recording
 
-@router.get("/recordings/by-call/{call_id}")
+
+@router.get(
+    "/recordings/by-call/{call_id}",
+    response_model=RecordingResponse,
+    summary="Récupérer l'enregistrement d'un appel",
+    tags=["Recordings"]
+)
 def get_recording_by_call_id_route(
     call_id: int,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # Récupérer l'enregistrement lié à l'appel
+    """Récupère l'enregistrement lié à un appel spécifique."""
     recording = get_recording_by_call_id(db, call_id)
     if not recording:
-        raise HTTPException(status_code=404, detail="Aucun enregistrement trouvé pour cet appel")
+        logger.warning(f"Aucun enregistrement trouvé pour appel {call_id}")
+        raise ResourceNotFound(f"Aucun enregistrement trouvé pour appel {call_id}")
     
     # Vérifier les permissions
-    if (current_user["role"] == UserRole.COMMERCIAL and 
-        recording.call.commercial_id != current_user["user_id"]):
-        raise HTTPException(status_code=403, detail="Accès non autorisé")
+    if not check_recording_access(db, recording, current_user):
+        logger.warning(
+            f"Accès refusé: {current_user['role']} {current_user['user_id']} "
+            f"tente d'accéder appel {call_id}"
+        )
+        raise UnauthorizedAccess("Vous n'avez pas accès à cet enregistrement")
     
     return recording
 
-@router.get("/recordings/by-call/{call_id}/play")
+
+@router.get(
+    "/recordings/by-call/{call_id}/play",
+    summary="Lire un enregistrement en streaming",
+    tags=["Recordings"]
+)
 async def play_recording(
     call_id: int,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    print(f"Tentative de lecture de l'enregistrement pour l'appel {call_id} par l'utilisateur {current_user['sub']} (ID: {current_user['user_id']}, Rôle: {current_user['role']})")
+    """
+    Récupère et lit l'enregistrement audio d'un appel en streaming.
+    
+    **Permissions:**
+    - COMMERCIAL: peut lire ses propres appels
+    - MANAGER: peut lire tous les appels
+    - ADMIN: accès à tous
+    """
+    logger.info(
+        f"Lecture appel {call_id} par {current_user['sub']} "
+        f"(ID: {current_user['user_id']}, Rôle: {current_user['role']})"
+    )
     
     # Récupérer l'enregistrement lié à l'appel
     recording = get_recording_by_call_id(db, call_id)
-    print(f"Enregistrement trouvé: {recording}")
     
     if not recording:
-        print(f"Aucun enregistrement trouvé pour l'appel {call_id}")
-        raise HTTPException(status_code=404, detail="Aucun enregistrement trouvé pour cet appel")
-    
-    # Vérifier si le fichier existe
-    file_path = os.path.abspath(recording.file_path)
-    print(f"Chemin du fichier: {file_path}")
-    print(f"Le fichier existe-t-il ? {os.path.exists(file_path)}")
-    
-    if not os.path.exists(file_path):
-        print(f"Le fichier {file_path} n'existe pas sur le disque")
-        raise HTTPException(status_code=404, detail="Fichier d'enregistrement introuvable")
+        logger.warning(f"Aucun enregistrement trouvé pour appel {call_id}")
+        raise ResourceNotFound(f"Aucun enregistrement trouvé pour appel {call_id}")
     
     # Vérifier les permissions
-    print(f"Vérification des permissions: Rôle={current_user['role']}, Commercial ID={recording.call.commercial_id}, User ID={current_user['user_id']}")
+    if not check_recording_access(db, recording, current_user):
+        logger.warning(
+            f"Accès refusé: {current_user['role']} {current_user['user_id']} "
+            f"tente de lire appel {call_id}"
+        )
+        raise UnauthorizedAccess("Vous n'avez pas accès à cet enregistrement")
     
-    if current_user["role"] == UserRole.COMMERCIAL and recording.call.commercial_id != current_user["user_id"]:
-        print("Accès refusé: L'utilisateur n'a pas les droits pour accéder à cet enregistrement")
-        raise HTTPException(status_code=403, detail="Accès non autorisé")
+    # Valider et récupérer le chemin du fichier (prévient path traversal)
+    try:
+        file_path = safe_file_path(recording.file_path)
+    except ValueError as e:
+        logger.error(f"❌ Tentative accès fichier invalide: {str(e)}")
+        raise ResourceNotFound("Fichier d'enregistrement introuvable")
     
-    # Lire le fichier audio et le renvoyer
-    file_extension = os.path.splitext(recording.filename)[1].lower()
-    media_type = f"audio/{file_extension[1:] if file_extension else 'mpeg'}"
+    # Déterminer le MIME type basé sur l'extension
+    media_type = get_audio_mime_type(recording.filename)
     
-    print(f"Envoi du fichier avec le type MIME: {media_type}")
+    logger.info(f"Envoi du fichier {recording.filename} (MIME: {media_type})")
     
     try:
         with open(file_path, "rb") as f:
             content = f.read()
         
         return Response(content=content, media_type=media_type)
-    except Exception as e:
-        print(f"Erreur lors de la lecture du fichier: {str(e)}")
-        raise HTTPException(status_code=500, detail="Erreur lors de la lecture du fichier")
+    except IOError as e:
+        logger.error(f"❌ Erreur lecture fichier: {str(e)}", exc_info=True)
+        raise UploadError("Erreur lors de la lecture du fichier")
 
-@router.get("/recordings/by-call/{call_id}/download")
+
+@router.get(
+    "/recordings/by-call/{call_id}/download",
+    summary="Télécharger un enregistrement",
+    tags=["Recordings"]
+)
 async def download_recording(
     call_id: int,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # Récupérer l'enregistrement lié à l'appel
+    """
+    Télécharge un enregistrement audio en tant que pièce jointe.
+    
+    **Permissions:**
+    - COMMERCIAL: peut télécharger ses propres appels
+    - MANAGER: peut télécharger tous les appels
+    - ADMIN: accès à tous
+    """
     recording = get_recording_by_call_id(db, call_id)
-    if not recording or not os.path.exists(recording.file_path):
-        raise HTTPException(status_code=404, detail="Aucun enregistrement trouvé pour cet appel")
+    if not recording:
+        logger.warning(f"Enregistrement non trouvé pour appel {call_id}")
+        raise ResourceNotFound(f"Enregistrement non trouvé pour appel {call_id}")
     
     # Vérifier les permissions
-    if (current_user["role"] == UserRole.COMMERCIAL and 
-        recording.call.commercial_id != current_user["user_id"]):
-        raise HTTPException(status_code=403, detail="Accès non autorisé")
+    if not check_recording_access(db, recording, current_user):
+        logger.warning(
+            f"Accès refusé: {current_user['role']} {current_user['user_id']} "
+            f"tente de télécharger appel {call_id}"
+        )
+        raise UnauthorizedAccess("Vous n'avez pas accès à cet enregistrement")
     
-    # Lire le fichier audio et le renvoyer en tant que pièce jointe
-    file_extension = os.path.splitext(recording.filename)[1].lower()
-    media_type = f"audio/{file_extension[1:] if file_extension else 'mpeg'}"
+    # Valider et récupérer le chemin du fichier
+    try:
+        file_path = safe_file_path(recording.file_path)
+    except ValueError as e:
+        logger.error(f"❌ Tentative accès fichier invalide: {str(e)}")
+        raise ResourceNotFound("Fichier d'enregistrement introuvable")
     
-    with open(recording.file_path, "rb") as f:
-        content = f.read()
+    media_type = get_audio_mime_type(recording.filename)
     
-    return Response(
-        content=content,
-        media_type=media_type,
-        headers={
-            "Content-Disposition": f"attachment; filename={recording.filename}",
-            "Content-Type": "application/octet-stream"
-        }
-    )
+    logger.info(f"Téléchargement fichier {recording.filename}")
+    
+    try:
+        with open(file_path, "rb") as f:
+            content = f.read()
+        
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={recording.filename}",
+                "Content-Type": "application/octet-stream"
+            }
+        )
+    except IOError as e:
+        logger.error(f"❌ Erreur téléchargement fichier: {str(e)}", exc_info=True)
+        raise UploadError("Erreur lors du téléchargement du fichier")
 
-@router.delete("/recordings/{recording_id}")
+
+@router.delete(
+    "/recordings/{recording_id}",
+    summary="Supprimer un enregistrement",
+    tags=["Recordings"]
+)
 def delete_recording(
     recording_id: int,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    """
+    Supprime un enregistrement (admin uniquement).
+    
+    **Permissions:**
+    - ADMIN: autorisé
+    - Autres: accès refusé
+    """
     from ..services.file_upload import delete_recording_file
-    recording = delete_recording_file(db, recording_id)
+    
+    recording = get_recording_by_id(db, recording_id)
     if not recording:
-        raise HTTPException(status_code=404, detail="Enregistrement non trouvé")
+        logger.warning(f"Enregistrement {recording_id} non trouvé")
+        raise ResourceNotFound(f"Enregistrement {recording_id} non trouvé")
     
     # Vérifier les permissions (admin seulement)
     if current_user["role"] != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Accès non autorisé")
+        logger.warning(
+            f"Tentative suppression par non-admin: "
+            f"{current_user['role']} {current_user['user_id']}"
+        )
+        raise UnauthorizedAccess("Seul un administrateur peut supprimer des enregistrements")
     
-    return {"message": "Enregistrement supprimé avec succès"}
+    try:
+        delete_recording_file(db, recording_id)
+        logger.info(f"✅ Enregistrement {recording_id} supprimé")
+        return {"message": "Enregistrement supprimé avec succès"}
+    except Exception as e:
+        logger.error(f"❌ Erreur suppression enregistrement: {str(e)}", exc_info=True)
+        raise UploadError(f"Erreur lors de la suppression: {str(e)}")

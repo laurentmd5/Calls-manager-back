@@ -8,24 +8,22 @@ from ..services.user_service import (
     create_user, get_users, get_user_by_id, 
     update_user, delete_user, get_commercials, get_inactive_users
 )
-from ..utils.security import verify_token
-from ..models.user import UserRole
+from ..services.auth import get_current_user
+from ..models.user import UserRole, User
+from ..utils.exceptions import UnauthorizedAccess
 
 router = APIRouter()
 
-def get_admin_or_manager(token: str = Depends(verify_token)):
-    if not token or token.get("role") not in ["admin", "manager"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Accès réservé aux administrateurs et managers"
-        )
-    return token
+def require_admin_or_manager(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise UnauthorizedAccess("Accès réservé aux administrateurs et managers")
+    return current_user
 
 @router.post("/users", response_model=UserResponse)
 def create_new_user(
     user_data: UserCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_or_manager)
+    current_user: User = Depends(require_admin_or_manager)
 ):
     return create_user(db, user_data)
 
@@ -34,21 +32,21 @@ def list_users(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_or_manager)
+    current_user: User = Depends(require_admin_or_manager)
 ):
     return get_users(db, skip, limit)
 
 @router.get("/users/commercials", response_model=List[UserResponse])
 def list_commercials(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_or_manager)
+    current_user: User = Depends(require_admin_or_manager)
 ):
     return get_commercials(db)
 
 @router.get("/users/inactive", response_model=List[UserResponse])
 def list_inactive_users(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_or_manager)
+    current_user: User = Depends(require_admin_or_manager)
 ):
     """
     Récupère la liste des utilisateurs inactifs.
@@ -60,7 +58,7 @@ def list_inactive_users(
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_or_manager)
+    current_user: User = Depends(require_admin_or_manager)
 ):
     user = get_user_by_id(db, user_id)
     if not user:
@@ -72,7 +70,7 @@ def update_user_info(
     user_id: int,
     user_data: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_or_manager)
+    current_user: User = Depends(require_admin_or_manager)
 ):
     user = update_user(db, user_id, user_data)
     if not user:
@@ -83,7 +81,7 @@ def update_user_info(
 def delete_user_account(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_or_manager)
+    current_user: User = Depends(require_admin_or_manager)
 ):
     success = delete_user(db, user_id)
     if not success:
