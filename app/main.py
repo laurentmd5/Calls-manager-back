@@ -56,11 +56,12 @@ app = FastAPI(
 origins = [
     "http://localhost:8080",
     "http://127.0.0.1:8080",
-    "http://192.168.1.35:8000",
+    "http://192.168.1.5:8080",
     "http://localhost",
-    "https://sensitivity-flows-bone-bit.trycloudflare.com:8000",
+    "https://192.168.1.*:8000",
     "http://localhost:8000",
-    "http://192.168.1.*",
+    "http://192.168.1.*:8080",
+    "http://192.168.1.2:8000",
     "http://10.0.2.2:8000"  # Pour émulateur Android
 ]
 

@@ -9,27 +9,18 @@ from ..database.connection import get_db
 from ..schemas.recording import RecordingResponse, RecordingCreate
 from ..services.call_service import get_call_by_id
 from ..services.file_upload import save_recording_file, get_recording_by_call_id, get_recording_by_id
-from ..utils.security import verify_token, safe_file_path
+from ..services.auth import get_current_user  # ← IMPORTANT: Utiliser la même que calls.py
+from ..utils.security import safe_file_path
 from ..utils.file_validator import validate_audio_file, get_audio_mime_type
 from ..utils.exceptions import ResourceNotFound, UnauthorizedAccess, InvalidFileFormat, UploadError
-from ..models.user import UserRole
+from ..models.user import UserRole, User
 from config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def get_current_user(token: str = Depends(verify_token)):
-    """Extrait l'utilisateur courant du token JWT."""
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token invalide ou expiré"
-        )
-    return token
-
-
-def check_recording_access(db: Session, recording, current_user: dict) -> bool:
+def check_recording_access(db: Session, recording, current_user: User) -> bool:
     """
     Vérifie si l'utilisateur a accès à cet enregistrement.
     
@@ -41,16 +32,16 @@ def check_recording_access(db: Session, recording, current_user: dict) -> bool:
     Args:
         db: Session base de données
         recording: Objet Recording
-        current_user: Dict utilisateur du token
+        current_user: Utilisateur courant (objet User)
         
     Returns:
         bool: True si accès autorisé
     """
-    if current_user["role"] in [UserRole.ADMIN, UserRole.MANAGER]:
+    if current_user.role in [UserRole.ADMIN, UserRole.MANAGER]:
         return True
     
-    if current_user["role"] == UserRole.COMMERCIAL:
-        return recording.call.commercial_id == current_user["user_id"]
+    if current_user.role == UserRole.COMMERCIAL:
+        return recording.call.commercial_id == current_user.id
     
     return False
 
@@ -115,7 +106,7 @@ async def upload_recording(
 def get_recording_info(
     recording_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """Récupère les infos d'un enregistrement spécifique."""
     recording = get_recording_by_id(db, recording_id)
@@ -126,7 +117,7 @@ def get_recording_info(
     # Vérifier les permissions
     if not check_recording_access(db, recording, current_user):
         logger.warning(
-            f"Accès refusé: {current_user['role']} {current_user['user_id']} "
+            f"Accès refusé: {current_user.role} {current_user.id} "
             f"tente d'accéder enregistrement {recording_id}"
         )
         raise UnauthorizedAccess("Vous n'avez pas accès à cet enregistrement")
@@ -143,7 +134,7 @@ def get_recording_info(
 def get_recording_by_call_id_route(
     call_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """Récupère l'enregistrement lié à un appel spécifique."""
     recording = get_recording_by_call_id(db, call_id)
@@ -154,7 +145,7 @@ def get_recording_by_call_id_route(
     # Vérifier les permissions
     if not check_recording_access(db, recording, current_user):
         logger.warning(
-            f"Accès refusé: {current_user['role']} {current_user['user_id']} "
+            f"Accès refusé: {current_user.role} {current_user.id} "
             f"tente d'accéder appel {call_id}"
         )
         raise UnauthorizedAccess("Vous n'avez pas accès à cet enregistrement")
@@ -170,7 +161,7 @@ def get_recording_by_call_id_route(
 async def play_recording(
     call_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Récupère et lit l'enregistrement audio d'un appel en streaming.
@@ -181,8 +172,8 @@ async def play_recording(
     - ADMIN: accès à tous
     """
     logger.info(
-        f"Lecture appel {call_id} par {current_user['sub']} "
-        f"(ID: {current_user['user_id']}, Rôle: {current_user['role']})"
+        f"Lecture appel {call_id} par {current_user.email} "
+        f"(ID: {current_user.id}, Rôle: {current_user.role})"
     )
     
     # Récupérer l'enregistrement lié à l'appel
@@ -195,7 +186,7 @@ async def play_recording(
     # Vérifier les permissions
     if not check_recording_access(db, recording, current_user):
         logger.warning(
-            f"Accès refusé: {current_user['role']} {current_user['user_id']} "
+            f"Accès refusé: {current_user.role} {current_user.id} "
             f"tente de lire appel {call_id}"
         )
         raise UnauthorizedAccess("Vous n'avez pas accès à cet enregistrement")
@@ -230,7 +221,7 @@ async def play_recording(
 async def download_recording(
     call_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Télécharge un enregistrement audio en tant que pièce jointe.
@@ -248,7 +239,7 @@ async def download_recording(
     # Vérifier les permissions
     if not check_recording_access(db, recording, current_user):
         logger.warning(
-            f"Accès refusé: {current_user['role']} {current_user['user_id']} "
+            f"Accès refusé: {current_user.role} {current_user.id} "
             f"tente de télécharger appel {call_id}"
         )
         raise UnauthorizedAccess("Vous n'avez pas accès à cet enregistrement")
@@ -289,7 +280,7 @@ async def download_recording(
 def delete_recording(
     recording_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Supprime un enregistrement (admin uniquement).
@@ -306,10 +297,10 @@ def delete_recording(
         raise ResourceNotFound(f"Enregistrement {recording_id} non trouvé")
     
     # Vérifier les permissions (admin seulement)
-    if current_user["role"] != UserRole.ADMIN:
+    if current_user.role != UserRole.ADMIN:
         logger.warning(
             f"Tentative suppression par non-admin: "
-            f"{current_user['role']} {current_user['user_id']}"
+            f"{current_user.role} {current_user.id}"
         )
         raise UnauthorizedAccess("Seul un administrateur peut supprimer des enregistrements")
     
