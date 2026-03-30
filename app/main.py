@@ -1,5 +1,5 @@
 # app/main.py
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -11,13 +11,13 @@ from datetime import datetime
 from .routes import auth, users, clients, calls, recordings, performance
 from config import settings
 
+
 def create_default_admin():
     """Crée un administrateur par défaut s'il n'existe pas."""
-    # Configuration simplifiée de CryptContext pour éviter les problèmes de version
     pwd_context = CryptContext(
-        schemes=["bcrypt"], 
+        schemes=["bcrypt"],
         deprecated="auto",
-        bcrypt__rounds=12  # Nombre de tours de hachage (plus c'est élevé, plus c'est sécurisé mais plus lent)
+        bcrypt__rounds=12
     )
     db = SessionLocal()
     try:
@@ -25,7 +25,7 @@ def create_default_admin():
         if not admin:
             admin = User(
                 email="admin@netsysvoice.com",
-                password_hash=pwd_context.hash("passer"[:72]),
+                password_hash=pwd_context.hash("passer"),
                 first_name="netsysvoice",
                 last_name="admin",
                 phone_number="",
@@ -42,6 +42,7 @@ def create_default_admin():
     finally:
         db.close()
 
+
 # Create upload directories
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 os.makedirs(settings.RECORDINGS_DIR, exist_ok=True)
@@ -53,16 +54,18 @@ app = FastAPI(
 )
 
 # CORS Middleware Configuration
-origins = [
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+
+# Ajouter les origines de développement
+origins += [
     "http://localhost:8080",
     "http://127.0.0.1:8080",
-    "http://192.168.1.5:8080",
+    "http://localhost:3000",
     "http://localhost",
-    "https://192.168.1.*:8000",
+    "http://192.168.1.5:8080",
     "http://localhost:8000",
-    "http://192.168.1.*:8080",
-    "http://192.168.1.2:8000",
-    "http://10.0.2.2:8000"  # Pour émulateur Android
+    "http://10.0.2.2:8000",
 ]
 
 app.add_middleware(
@@ -91,10 +94,12 @@ app.include_router(calls.router, prefix="/api/v1", tags=["Calls"])
 app.include_router(recordings.router, prefix="/api/v1", tags=["Recordings"])
 app.include_router(performance.router, tags=["Performance"])
 
+
 @app.on_event("startup")
 async def startup_event():
     create_tables()
-    create_default_admin()  # Créer l'admin au démarrage
+    create_default_admin()
+
 
 @app.get("/")
 async def root():
@@ -102,6 +107,7 @@ async def root():
         "message": f"Bienvenue sur {settings.APP_NAME}",
         "version": settings.VERSION
     }
+
 
 @app.get("/health")
 async def health_check():
