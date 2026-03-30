@@ -58,6 +58,8 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Copier code
 COPY --chown=calltrack:calltrack ./app /app/app
+COPY --chown=calltrack:calltrack ./config.py /app/config.py
+COPY --chown=calltrack:calltrack ./create_admin.py /app/create_admin.py
 
 # Créer dossiers runtime
 RUN mkdir -p /app/uploads /app/recordings && \
