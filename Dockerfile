@@ -58,8 +58,6 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Copier code
 COPY --chown=calltrack:calltrack ./app /app/app
-COPY --chown=calltrack:calltrack ./alembic.ini /app/alembic.ini
-COPY --chown=calltrack:calltrack ./alembic /app/alembic
 
 # Créer dossiers runtime
 RUN mkdir -p /app/uploads /app/recordings && \
