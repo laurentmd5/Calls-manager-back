@@ -66,6 +66,10 @@ origins += [
     "http://192.168.1.5:8080",
     "http://localhost:8000",
     "http://10.0.2.2:8000",
+    "https://calltrack.vps119029.serveur-vps.net",
+    "http://calltrack.vps119029.serveur-vps.net",
+    "https://vps119029.serveur-vps.net",
+    "http://vps119029.serveur-vps.net",
 ]
 
 app.add_middleware(
