@@ -109,19 +109,19 @@ class CallResponse(CallBase):
         json_schema_extra = {
             "example": {
                 "id": 100,
-                "phone_number": "+221771234567",
+                "phone_number": "+221778126044",
                 "duration": 180.5,
                 "status": "answered",
-                "is_incoming": true,
+                "is_incoming": True,
                 "decision": "call_back",
                 "notes": "Client très intéressé",
                 "client_id": 42,
                 "commercial_id": 1,
                 "commercial": {
                     "id": 1,
-                    "first_name": "Jean",
-                    "last_name": "Dupont",
-                    "email": "jean.dupont@netsyscall.com"
+                    "first_name": "Laurent",
+                    "last_name": "MAVOUNGOU",
+                    "email": "laurent@netsys-info.com"
                 },
                 "call_date": "2026-03-25T14:30:00Z"
             }
