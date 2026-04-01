@@ -1,5 +1,5 @@
 # app/models/call.py
-from sqlalchemy import Column, Integer, String, Enum, DateTime, Text, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Enum, DateTime, Text, ForeignKey, Float, Boolean
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import enum
@@ -27,6 +27,7 @@ class Call(Base):
     status = Column(Enum(CallStatus), nullable=False)
     decision = Column(Enum(CallDecision))
     notes = Column(Text)
+    is_incoming = Column(Boolean, nullable=False, default=False)
     call_date = Column(DateTime(timezone=True), server_default=func.now())
     
     # Foreign Keys
